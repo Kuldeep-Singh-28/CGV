@@ -2,642 +2,948 @@
 // 190001030
 
 #include <bits/stdc++.h>
-#include <GL/gl.h>
 #include <GL/glut.h>
+#include <unistd.h>
+#include "imageio.h"
 
 using namespace std;
 
-#define PI 3.14
+float intensity = 1;
+GLfloat lightposition[] = {2.0, 2.0, 2.0, 1.0};
+GLfloat lightposition2[] = {0.0, 1.0, -2.0, 1.0};
 
-float reference_point = 0.0;
+typedef GLfloat point[3];
+point f[] = {{0.0, 0.25, 0.0}, {0.0, 1.0, 0.0}, {0.025, 0.25, -0.025}, {-0.025, 0.25, -0.025}, {-0.025, 0.25, 0.025}, {0.025, 0.25, 0.025}};
+point fb[] = {{0.025, 0.25, -0.025}, {0.025, 0.25, 0.025}, {0.2, 0.25, 0.05}, {0.2, 0.25, -0.05}, {-0.025, 0.25, -0.025}, {-0.025, 0.25, 0.025}, {-0.2, 0.25, 0.05}, {-0.2, 0.25, -0.05}, {0.025, 0.25, -0.025}, {-0.025, 0.25, -0.025}, {-0.05, 0.25, -0.2}, {0.05, 0.25, -0.2}, {-0.025, 0.25, 0.025}, {0.025, 0.25, 0.025}, {0.05, 0.25, 0.2}, {-0.05, 0.25, 0.2}};
+point t[] = {{1.1, -0.3, -0.5}, {1.1, 0.3, -0.5}, {1.1, 0.3, 0.5}, {1.1, -0.3, 0.5}};
+point ts[] = {{1.1, 0.05, -0.05}, {1.1, 0.0, -0.05}, {1.1, 0.0, 0.05}, {1.1, 0.05, 0.05}, {1.49, 0.0, -0.05}, {1.49, -0.05, -0.05}, {1.49, -0.05, 0.05}, {1.49, 0.0, 0.05}};
+;
 
-int intensity = 0;
+/*
+To run the program:
 
-// Dimensions
-float house_width = 6.0;
-float house_height_ = 4.0;
-float length_of_house = -4.0;
-float width_of_roof = house_width + 1.5;
-float height_of_roof = 8.0;
-float extra_depth = 0.01;
-float door_width = 0.8;
-float door_height = 4.0;
-float window_size = 0.8;
+1. To create imageio.o file: g++ -c imageio.cpp -ltiff -lpng
+2. TO RUN: g++ Q1_Code.cpp -o Q1 -lglut -lGLU -lGL imageio.o -ltiff -lpng
 
-// colors
-float house_red = 245.0 / 255, house_green = 175.0 / 255, house_blue = 103.0 / 255;
-float door_red = 255 / 255, door_green = 255 / 255, door_blue = 0 / 255;
-float window_red = 160 / 255.0, window_green = 82 / 255.0, window_blue = 45 / 255.0;
-float roof_red = 139 / 255.0, roof_green = 69 / 255.0, roof_blue = 19 / 255.0;
+Using keyboard:
 
-// a starting point for comparison
-int start_x = -1;
-int start_y = -1;
+r/R 		Reset the house to initial position
+a/s 		Zoom-in/out
+f/F         fan on-off  ---> n/m will increase/decrease speed
+l/L			lights on-off
+g/G			open/close gate
+w/W			open/close windows
 
-// amount needed to lower the intensity
-float reduce_intensity = 0.0;
+Using Mouse:
+drag + Rotate the house + change the direction of rotation
+Scrollwheel -> Zoom-in/out
 
-// Rotational angles
-float Theta = PI / 2;
-float Phi = 0;
-float Radius = 25;
-float front_back = 0;
-float left_right = 0;
-int flip = 0;
-int window1 = 0;
-int window2 = 0;
+*/
 
-bool mouse_pressed = false;
+double rotate_x = 0, rotate_y = 0, zoom = 1, mwo = 1;
+float fanspeed = 2.0, angle = 0.0;
+int fanflag = 0, lightflag = 0;
+int sofa_s = 0, sofa_d = 0;
+double doorAngle = 0;
+int flag_time = 0;
 
-float unit_change = (2 * PI * Radius) / 1000;
+int width, height;
 
-float camera[3] = {0, 0, 25};
+int texImageWidth;
+int texImageHeight;
 
-void fill_color(float x, float y, float z)
+// To load texture image
+// Only works with.png and .tif files. If there are any errors, NULL is returned.
+GLubyte *makeTexImage(char *file)
 {
-    glColor3f(x / 255, y / 255, z / 255);
+    int width, height;
+    GLubyte *texImage;
+    texImage = loadImageRGBA((char *)file, &width, &height);
+    texImageWidth = width;
+    texImageHeight = height;
+    return texImage;
 }
 
-// This function handles changes in window size.
-void update_window_size(int width, int height)
+// To prints text
+// The string is printed with a translation (x, y, z), a scaling factor s, and a rotation of rotate degrees along the y axis.
+// To create a bold look, pointsize specifies the width of the line and point.
+void Display_Stroke(GLfloat x, GLfloat y, GLfloat z, GLfloat s, GLfloat pointSize, GLfloat rotate, string text)
 {
-    if (height == 0)
-        height = 1;
-    float ratio = (width * 1.0) / height;
-    glMatrixMode(GL_PROJECTION);
-    glLoadIdentity();
-    glViewport(0, 0, width, height);
-    gluPerspective(60.0, ratio, 0.1, 1000.0);
-    glMatrixMode(GL_MODELVIEW);
+    string buffer = text;
+    glPushMatrix();
+    glTranslatef(x, y, z);
+    glPointSize(pointSize);
+    glLineWidth(pointSize);
+    glRotatef(rotate, 0.0, 1.0, 0.0);
+    glScalef(s, s, s);
+    for (auto ch : buffer)
+        glutStrokeCharacter(GLUT_STROKE_MONO_ROMAN, ch);
+    glPopMatrix();
 }
 
-void wall_Window(int x)
+void Tree(float x, float y, float z)
 {
-    glBegin(GL_POLYGON);
-    glVertex3f(x, house_height_, house_width);
-    glVertex3f(x, window_size, house_width);
-    glVertex3f(x, window_size, -house_width);
-    glVertex3f(x, house_height_, -house_width);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(x, -house_height_, house_width);
-    glVertex3f(x, -window_size, house_width);
-    glVertex3f(x, -window_size, -house_width);
-    glVertex3f(x, -house_height_, -house_width);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(x, window_size, house_width);
-    glVertex3f(x, window_size, window_size);
-    glVertex3f(x, -window_size, window_size);
-    glVertex3f(x, -window_size, house_width);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(x, window_size, -house_width);
-    glVertex3f(x, window_size, -window_size);
-    glVertex3f(x, -window_size, -window_size);
-    glVertex3f(x, -window_size, -house_width);
-    glEnd();
+    glPushMatrix();
+    GLUquadricObj *qobj = gluNewQuadric();
+    glTranslated(x, y, z);
+    glRotatef(90, 1.0f, 0.0f, 0.0f);
+    glColor3f(0, 0.8, 0);
+    // leaves
+    gluCylinder(qobj, 0.1, 0.5, 1, 16, 16);
+    gluCylinder(qobj, 0, 0.8, 2.5, 16, 16);
+    glColor3f(0.5, 0.3, 0);
+    gluCylinder(qobj, 0.05, 0.05, 4, 16, 16);
+    gluDeleteQuadric(qobj);
+    glPopMatrix();
 }
 
-void wall_Door(int z)
+void spin()
 {
-    glBegin(GL_POLYGON);
-    glVertex3f(house_width, house_height_, z);
-    glVertex3f(house_width, -house_height_ + door_height, z);
-    glVertex3f(-house_width, -house_height_ + door_height, z);
-    glVertex3f(-house_width, house_height_, z);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(house_width, -house_height_ + door_height, z);
-    glVertex3f(house_width, -house_height_, z);
-    glVertex3f(door_width, -house_height_, z);
-    glVertex3f(door_width, -house_height_ + door_height, z);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(-house_width, -house_height_ + door_height, z);
-    glVertex3f(-house_width, -house_height_, z);
-    glVertex3f(-door_width, -house_height_, z);
-    glVertex3f(-door_width, -house_height_ + door_height, z);
-    glEnd();
-}
-
-void cuboid(float x, float y, float z, float X, float Y, float Z)
-{
-    glBegin(GL_POLYGON);
-    glVertex3f(-x + X, Y + y, z + Z);
-    glVertex3f(x + X, Y + y, z + Z);
-    glVertex3f(x + X, Y - y, z + Z);
-    glVertex3f(-x + X, Y - y, z + Z);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(-x + X, Y + y, -z + Z);
-    glVertex3f(x + X, Y + y, -z + Z);
-    glVertex3f(x + X, Y - y, -z + Z);
-    glVertex3f(-x + X, Y - y, -z + Z);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(-x + X, Y + y, z + Z);
-    glVertex3f(-x + X, Y + y, -z + Z);
-    glVertex3f(-x + X, Y - y, -z + Z);
-    glVertex3f(-x + X, Y - y, z + Z);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(x + X, Y + y, z + Z);
-    glVertex3f(x + X, Y + y, -z + Z);
-    glVertex3f(x + X, Y - y, -z + Z);
-    glVertex3f(x + X, Y - y, z + Z);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(-x + X, Y + y, z + Z);
-    glVertex3f(-x + X, Y + y, -z + Z);
-    glVertex3f(x + X, Y + y, -z + Z);
-    glVertex3f(x + X, Y + y, z + Z);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(-x + X, Y - y, z + Z);
-    glVertex3f(-x + X, Y - y, -z + Z);
-    glVertex3f(x + X, Y - y, -z + Z);
-    glVertex3f(x + X, Y - y, z + Z);
-    glEnd();
-}
-
-void table(float x, float y, float z)
-{
-    cuboid(1.8, 0.15, 1.8, x, y + 1.5, z);
-    cuboid(0.25, 1.5, 0.25, x - 1.5, y, z - 1.5);
-    cuboid(0.25, 1.5, 0.25, x + 1.5, y, z - 1.5);
-    cuboid(0.25, 1.5, 0.25, x - 1.5, y, z + 1.5);
-    cuboid(0.25, 1.5, 0.25, x + 1.5, y, z + 1.5);
-}
-
-void bed(float x, float y, float z)
-{
-    cuboid(1.5, 0.7, 0.15, x, y + 1, z + 3);
-    cuboid(1.5, 0.1, 3.2, x, y + 0.6, z);
-    cuboid(0.15, 0.6, 0.15, x - 1.4, y, z - 3.0);
-    cuboid(0.15, 0.6, 0.15, x + 1.4, y, z - 3.0);
-    cuboid(0.15, 0.6, 0.15, x - 1.4, y, z + 3.0);
-    cuboid(0.15, 0.6, 0.15, x + 1.4, y, z + 3.0);
-}
-
-void door()
-{
-    if (flip)
+    angle = angle + fanspeed;
+    if (angle >= 360)
     {
-        float x = -door_width;
-        float z = house_width;
+        angle = 0;
+    }
+    usleep(10000);
+    flag_time += 1;
+    glutPostRedisplay();
+}
+
+void grass()
+{
+    glColor3f(0.13, 0.55, 0.13);
+    glBegin(GL_QUADS);
+    glVertex3f(-2.2, -1.02, -2.2);
+    glVertex3f(-2.2, -1.02, 2.2);
+    glVertex3f(2.2, -1.02, 2.2);
+    glVertex3f(2.2, -1.02, -2.2);
+    glEnd();
+}
+
+void windows()
+{
+    if (mwo == 1)
+    {
+        glColor3f(0.5, 0.55, 0.5);
         glBegin(GL_POLYGON);
-        glVertex3f(x, -house_height_ + door_height, z);
-        glVertex3f(x, -house_height_ + door_height, z + 2 * door_width);
-        glVertex3f(x, -house_height_, z + 2 * door_width);
-        glVertex3f(x, -house_height_, z);
+        glVertex3f(-1.1f, -0.5f, 1.51f);
+        glVertex3f(-1.1f, 0.0f, 1.51f);
+        glVertex3f(-0.6f, 0.0f, 1.51f);
+        glVertex3f(-0.6f, -0.5f, 1.51f);
+        glEnd();
+
+        glBegin(GL_POLYGON);
+        glVertex3f(1.1f, -0.5f, 1.51f);
+        glVertex3f(1.1f, 0.0f, 1.51f);
+        glVertex3f(0.6f, 0.0f, 1.51f);
+        glVertex3f(0.6f, -0.5f, 1.51f);
         glEnd();
     }
     else
     {
-        float z = house_width;
-        glBegin(GL_POLYGON);
-        glVertex3f(-door_width, -house_height_ + door_height, z);
-        glVertex3f(door_width, -house_height_ + door_height, z);
-        glVertex3f(door_width, -house_height_, z);
-        glVertex3f(-door_width, -house_height_, z);
+        glColor3f(0.5, 0.55, 0.5);
+        glBegin(GL_LINE_LOOP);
+        glVertex3f(-1.1f, -0.5f, 1.51f);
+        glVertex3f(-1.1f, 0.0f, 1.51f);
+        glVertex3f(-0.6f, 0.0f, 1.51f);
+        glVertex3f(-0.6f, -0.5f, 1.51f);
+        glEnd();
+
+        glBegin(GL_LINE_LOOP);
+        glVertex3f(1.1f, -0.5f, 1.51f);
+        glVertex3f(1.1f, 0.0f, 1.51f);
+        glVertex3f(0.6f, 0.0f, 1.51f);
+        glVertex3f(0.6f, -0.5f, 1.51f);
         glEnd();
     }
 }
 
-void window()
+void tv(point a, point b, point c, point d)
 {
-    if (window1)
-    {
-        float x = -house_width;
-        float z = -window_size;
-        glBegin(GL_POLYGON);
-        glVertex3f(x, window_size, z);
-        glVertex3f(x - window_size * 2, window_size, z);
-        glVertex3f(x - window_size * 2, -window_size, z);
-        glVertex3f(x, -window_size, z);
-        glEnd();
-    }
+    glColor3f(0.19, 0.31, 0.31);
+    glBegin(GL_POLYGON);
+    glVertex3fv(a);
+    glVertex3fv(b);
+    glVertex3fv(c);
+    glVertex3fv(d);
+    glEnd();
+}
+
+void tvs(point a, point b, point c, point d, point a1, point b1, point c1, point d1)
+{
+    glColor3f(0.75, 0.75, 0.75);
+    glBegin(GL_LINES);
+    glVertex3fv(a);
+    glVertex3fv(a1);
+    glEnd();
+    glBegin(GL_LINES);
+    glVertex3fv(b);
+    glVertex3fv(b1);
+    glEnd();
+    glBegin(GL_LINES);
+    glVertex3fv(c);
+    glVertex3fv(c1);
+    glEnd();
+    glBegin(GL_LINES);
+    glVertex3fv(d);
+    glVertex3fv(d1);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(a);
+    glVertex3fv(a1);
+    glVertex3fv(b1);
+    glVertex3fv(b);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(a);
+    glVertex3fv(a1);
+    glVertex3fv(d1);
+    glVertex3fv(d);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(b);
+    glVertex3fv(b1);
+    glVertex3fv(c1);
+    glVertex3fv(c);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(c);
+    glVertex3fv(c1);
+    glVertex3fv(d1);
+    glVertex3fv(d);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(a1);
+    glVertex3fv(b1);
+    glVertex3fv(c1);
+    glVertex3fv(d1);
+    glEnd();
+}
+
+void fan(point a, point b, point c, point d, point e, point f)
+{
+    glColor3f(0.72, 0.53, 0.04);
+    glLineWidth(2.0);
+    glBegin(GL_LINES);
+    glVertex3fv(a);
+    glVertex3fv(b);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(c);
+    glVertex3fv(d);
+    glVertex3fv(e);
+    glVertex3fv(f);
+    glEnd();
+}
+
+void fblade(point a, point b, point c, point d, point a1, point b1, point c1, point d1, point a2, point b2, point c2, point d2, point a3, point b3, point c3, point d3)
+{
+    glColor3f(0.72, 0.53, 0.04);
+    if (fanflag == 1)
+        glRotatef(angle, 0, 1, 0);
+    glBegin(GL_POLYGON);
+    glVertex3fv(a);
+    glVertex3fv(b);
+    glVertex3fv(c);
+    glVertex3fv(d);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(a1);
+    glVertex3fv(b1);
+    glVertex3fv(c1);
+    glVertex3fv(d1);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(a2);
+    glVertex3fv(b2);
+    glVertex3fv(c2);
+    glVertex3fv(d2);
+    glEnd();
+    glBegin(GL_POLYGON);
+    glVertex3fv(a3);
+    glVertex3fv(b3);
+    glVertex3fv(c3);
+    glVertex3fv(d3);
+    glEnd();
+}
+
+void table()
+{
+    glColor3f(0.80, 0.72, 0.62);
+    glPushMatrix();
+    glTranslated(0.375, -1.325 + 0.55, 0.0);
+    glScaled(5.0, 0.75, 11.0);
+    glutSolidCube(0.1);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslated(0.475, -1.425 + 0.525, -0.50);
+    glScaled(0.5, 2.25, 0.5);
+    glutSolidCube(0.1);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslated(0.475, -1.425 + 0.525, 0.50);
+    glScaled(0.5, 2.25, 0.5);
+    glutSolidCube(0.1);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslated(0.275, -1.425 + 0.525, 0.50);
+    glScaled(0.5, 2.25, 0.5);
+    glutSolidCube(0.1);
+    glPopMatrix();
+
+    glPushMatrix();
+    glTranslated(0.275, -1.425 + 0.525, -0.50);
+    glScaled(0.5, 2.25, 0.5);
+    glutSolidCube(0.1);
+    glPopMatrix();
+}
+
+void sofa1()
+{
+    glColor3f(0.96, 0.64, 0.38);
+    glPushMatrix();
+    glTranslated(-0.4 + sofa_s, -1.425 + 0.55, 0 + sofa_d); // bottom
+    glScaled(4, 2.5, 12);
+    glutSolidCube(0.1);
+    glPopMatrix();
+
+    glColor3f(0.93, 0.84, 0.72);
+    glPushMatrix();
+    glTranslated(-0.4 + sofa_s, -1.3125 + 0.55, -0.501 + sofa_d); // back
+    glScaled(4.01, 1.5, 2);
+    glutSolidCube(0.1);
+    glPopMatrix();
+
+    glColor3f(0.93, 0.84, 0.72);
+    glPushMatrix();
+    glTranslated(-0.4 + sofa_s, -1.3125 + 0.55, 0.501 + sofa_d); // front
+    glScaled(4.01, 1.5, 2);
+    glutSolidCube(0.1);
+    glPopMatrix();
+
+    glColor3f(0.87, 0.72, 0.53);
+    glPushMatrix();
+    glTranslated(-0.550 + sofa_s, -1.275 + 0.55, 0 + sofa_d); // rest
+    glScaled(1.0, 4.0, 10);
+    glutSolidCube(0.1);
+    glPopMatrix();
+}
+
+// Display house
+void display(void)
+{
+
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearColor(3 * 1.0 / 255 * intensity, 211 * 1.0 / 255 * intensity, 252 * 1.0 / 255 * intensity, 1);
+    GLfloat mat_ambient[] = {0.7, 0.7, 0.7, 1.0};
+    GLfloat mat_diffuse[] = {0.5, 0.5, 0.5, 1.0};
+    GLfloat mat_specular[] = {1.0, 1.0, 1.0, 1.0};
+    GLfloat mat_shininess[] = {50.0};
+    GLfloat lightintensity[] = {1 * intensity, 1 * intensity, 1 * intensity, intensity};
+
+    glMaterialfv(GL_FRONT_AND_BACK, GL_AMBIENT, mat_ambient);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_DIFFUSE, mat_diffuse);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SPECULAR, mat_specular);
+    glMaterialfv(GL_FRONT_AND_BACK, GL_SHININESS, mat_shininess);
+
+    glLightfv(GL_LIGHT0, GL_POSITION, lightposition);
+    glLightfv(GL_LIGHT0, GL_DIFFUSE, lightintensity);
+    glLightfv(GL_LIGHT0, GL_SPECULAR, mat_specular);
+    glLightfv(GL_LIGHT1, GL_POSITION, lightposition2);
+    glLightfv(GL_LIGHT1, GL_DIFFUSE, lightintensity);
+    glLightfv(GL_LIGHT1, GL_SPECULAR, mat_specular);
+
+    if (lightflag)
+        glEnable(GL_LIGHTING);
     else
-    {
-        float x = -house_width;
-        glBegin(GL_POLYGON);
-        glVertex3f(x, window_size, window_size);
-        glVertex3f(x, window_size, -window_size);
-        glVertex3f(x, -window_size, -window_size);
-        glVertex3f(x, -window_size, window_size);
-        glEnd();
-    }
-    if (window2)
-    {
-        float x = house_width;
-        float z = -window_size;
-        glBegin(GL_POLYGON);
-        glVertex3f(x, window_size, z);
-        glVertex3f(x + window_size * 2, window_size, z);
-        glVertex3f(x + window_size * 2, -window_size, z);
-        glVertex3f(x, -window_size, z);
-        glEnd();
-    }
-    else
-    {
-        float x = house_width;
-        glBegin(GL_POLYGON);
-        glVertex3f(x, window_size, window_size);
-        glVertex3f(x, window_size, -window_size);
-        glVertex3f(x, -window_size, -window_size);
-        glVertex3f(x, -window_size, window_size);
-        glEnd();
-    }
-}
+        glDisable(GL_LIGHTING);
 
-void tree(float X, float Y, float Z)
-{
-    fill_color(0, 255, 0);
-    glPushMatrix();
-    glTranslated(X, Y + 15, Z);
-    glRotated(90, -1.0, 0.0, 0.0);
-    glutSolidCone(3, 6, 50, 50);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslated(X, Y + 13, Z);
-    glRotated(90, -1.0, 0.0, 0.0);
-    glutSolidCone(3.5, 5, 50, 50);
-    glPopMatrix();
-    glPushMatrix();
-    glTranslated(X, Y + 11, Z);
-    glRotated(90, -1.0, 0.0, 0.0);
-    glutSolidCone(4, 4, 50, 50);
-    glPopMatrix();
-    glPushMatrix();
-    fill_color(200, 100, 20);
-    glTranslated(X, Y + 7, Z);
-    GLUquadricObj *quadratic;
-    quadratic = gluNewQuadric();
-    glRotatef(90.0f, -1.0f, 0.0f, 0.0f);
-    gluCylinder(quadratic, 1.0, 1.0, 6.0, 32, 32);
-    glPopMatrix();
-}
-
-void ground(float X)
-{
-    fill_color(29, 110, 26);
-    glBegin(GL_POLYGON);
-    glVertex3f(-X, -house_height_, -X);
-    glVertex3f(X, -house_height_, -X);
-    glVertex3f(X, -house_height_, X);
-    glVertex3f(-X, -house_height_, X);
-    glEnd();
-}
-
-void road(float l)
-{
-    fill_color(128, 128, 128);
-    glBegin(GL_POLYGON);
-    glVertex3f(-l, -house_height_ + 0.01, 3 * house_height_);
-    glVertex3f(l, -house_height_ + 0.01, 3 * house_height_);
-    glVertex3f(l, -house_height_ + 0.01, 6 * house_height_);
-    glVertex3f(-l, -house_height_ + 0.01, 6 * house_height_);
-    glEnd();
-}
-
-// display
-void house()
-{
-    // ground
-    ground(1000);
-
-    // back_face
-    fill_color(255, 255, 255);
-    glBegin(GL_POLYGON);
-
-    glVertex3f(reference_point + house_width, reference_point - house_height_, reference_point - house_width);
-    glVertex3f(reference_point + house_width, reference_point + house_height_, reference_point - house_width);
-    glVertex3f(reference_point - house_width, reference_point + house_height_, reference_point - house_width);
-    glVertex3f(reference_point - house_width, reference_point - house_height_, reference_point - house_width);
-    glEnd();
-
-    glColor3f(house_red, house_green, house_blue);
-
-    // front_face
-    wall_Door(house_width);
-
-    // right_face
-    wall_Window(house_width);
-
-    // left_face
-    wall_Window(-house_width);
-
-    // bottom face
-    fill_color(255, 0, 0);
-
-    glBegin(GL_POLYGON);
-    glVertex3f(reference_point + house_width, reference_point - house_height_ + 0.01, reference_point + house_width);
-    glVertex3f(reference_point + house_width, reference_point - house_height_ + 0.01, reference_point - house_width);
-    glVertex3f(reference_point - house_width, reference_point - house_height_ + 0.01, reference_point - house_width);
-    glVertex3f(reference_point - house_width, reference_point - house_height_ + 0.01, reference_point + house_width);
-    glEnd();
-
-    // Roof
-    glColor3f(roof_red, roof_green, roof_blue);
-    glBegin(GL_POLYGON);
-    glVertex3f(reference_point + width_of_roof, reference_point + house_height_, reference_point + width_of_roof);
-    glVertex3f(reference_point + width_of_roof, reference_point + house_height_, reference_point - width_of_roof);
-    glVertex3f(reference_point - width_of_roof, reference_point + house_height_, reference_point - width_of_roof);
-    glVertex3f(reference_point - width_of_roof, reference_point + house_height_, reference_point + width_of_roof);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(reference_point + width_of_roof, reference_point + house_height_, reference_point + width_of_roof);
-    glVertex3f(reference_point + width_of_roof, reference_point + house_height_, reference_point - width_of_roof);
-    glVertex3f(reference_point, height_of_roof, reference_point);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(reference_point + width_of_roof, reference_point + house_height_, reference_point - width_of_roof);
-    glVertex3f(reference_point - width_of_roof, reference_point + house_height_, reference_point - width_of_roof);
-    glVertex3f(reference_point, height_of_roof, reference_point);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(reference_point, height_of_roof, reference_point);
-    glVertex3f(reference_point - width_of_roof, reference_point + house_height_, reference_point - width_of_roof);
-    glVertex3f(reference_point - width_of_roof, reference_point + house_height_, reference_point + width_of_roof);
-    glEnd();
-    glBegin(GL_POLYGON);
-    glVertex3f(reference_point + width_of_roof, reference_point + house_height_, reference_point + width_of_roof);
-    glVertex3f(reference_point, height_of_roof, reference_point);
-    glVertex3f(reference_point - width_of_roof, reference_point + house_height_, reference_point + width_of_roof);
-    glEnd();
-
-    // table
-    table(-house_width + 2, -house_height_ + 1.5, -house_width + 2);
-    bed(0.5 * house_width, -house_height_ + 0.6, 0);
-    door();
-    window();
-}
-
-void light(float X, float Y, float Z)
-{
-    GLfloat position0[] = {X, Y, Z, 0.0};
-
-    GLfloat ambient0[] = {0.0, 0.0, 0.0, 1.0};
-    GLfloat specular0[] = {1.0, 1.0, 1.0, 1.0};
-    GLfloat diffuse0[] = {1.0, 1.0, 1.0, 1.0};
-
-    glEnable(GL_LIGHTING);
-
+    glEnable(GL_LIGHT0);
+    glEnable(GL_LIGHT1);
+    glShadeModel(GL_SMOOTH);
+    glEnable(GL_DEPTH_TEST);
+    glEnable(GL_NORMALIZE);
     glEnable(GL_COLOR_MATERIAL);
 
-    glColorMaterial(GL_FRONT, GL_AMBIENT_AND_DIFFUSE);
-
-    GLfloat specular_material[] = {0, 0, 0, 1};
-    GLfloat emission_material[] = {0, 0, 0, 1};
-    glMaterialfv(GL_FRONT, GL_SPECULAR, specular_material);
-    glMaterialfv(GL_FRONT, GL_EMISSION, emission_material);
-
-    if (intensity == 1)
-    {
-        glEnable(GL_LIGHT0);
-        glLightfv(GL_LIGHT0, GL_POSITION, position0);
-        glLightfv(GL_LIGHT0, GL_DIFFUSE, diffuse0);
-        glLightfv(GL_LIGHT0, GL_AMBIENT, ambient0);
-        glLightfv(GL_LIGHT0, GL_SPECULAR, specular0);
-    }
-    else
-    {
-        glDisable(GL_LIGHT0);
-    }
-    if (intensity == 2)
-    {
-        glEnable(GL_LIGHT1);
-        glLightfv(GL_LIGHT1, GL_POSITION, position0);
-        glLightfv(GL_LIGHT1, GL_DIFFUSE, diffuse0);
-        glLightfv(GL_LIGHT1, GL_AMBIENT, ambient0);
-        glLightfv(GL_LIGHT1, GL_SPECULAR, specular0);
-    }
-    if (intensity == 3)
-    {
-        glEnable(GL_LIGHT2);
-        glLightfv(GL_LIGHT2, GL_POSITION, position0);
-        glLightfv(GL_LIGHT2, GL_DIFFUSE, diffuse0);
-        glLightfv(GL_LIGHT2, GL_AMBIENT, ambient0);
-        glLightfv(GL_LIGHT2, GL_SPECULAR, specular0);
-    }
-    if (intensity == 4)
-    {
-        glEnable(GL_LIGHT3);
-        glLightfv(GL_LIGHT3, GL_POSITION, position0);
-        glLightfv(GL_LIGHT3, GL_DIFFUSE, diffuse0);
-        glLightfv(GL_LIGHT3, GL_AMBIENT, ambient0);
-        glLightfv(GL_LIGHT3, GL_SPECULAR, specular0);
-    }
-    if (intensity == 5)
-    {
-        glEnable(GL_LIGHT4);
-        glLightfv(GL_LIGHT4, GL_POSITION, position0);
-        glLightfv(GL_LIGHT4, GL_DIFFUSE, diffuse0);
-        glLightfv(GL_LIGHT4, GL_AMBIENT, ambient0);
-        glLightfv(GL_LIGHT4, GL_SPECULAR, specular0);
-    }
-    if (intensity == 6)
-    {
-        glEnable(GL_LIGHT5);
-        glLightfv(GL_LIGHT5, GL_POSITION, position0);
-        glLightfv(GL_LIGHT5, GL_DIFFUSE, diffuse0);
-        glLightfv(GL_LIGHT5, GL_AMBIENT, ambient0);
-        glLightfv(GL_LIGHT5, GL_SPECULAR, specular0);
-    }
-    
-}
-
-// Function handles the rotation of house
-void draw()
-{
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
+    // house transformations
     glLoadIdentity();
 
-    glTranslatef(0 + left_right, 0 + front_back, -1.0 * Radius);
-    camera[0] += front_back * sin(Phi);
-    camera[2] -= front_back * cos(Phi);
-    front_back = 0;
-    float lookat[] = {Radius * sin(Phi) + camera[0], Radius * cos(Theta) + camera[1], -Radius * cos(Phi) + camera[2]};
-    cout << "Radius " << Radius << endl;
-    gluLookAt(camera[0], camera[1], camera[2], /* look from camera XYZ */
-              lookat[0], lookat[1], lookat[2], /* look at the origin */
-              0, 1, 0);                        /* positive Y up vector */
-    cout << "see at " << lookat[0] << " " << lookat[1] << " " << lookat[2] << endl;
-    cout << "Phi " << Phi << endl;
+    // Translate the house
+    glTranslatef(0.0f, 0.0f, -1.0f);
+
+    glRotatef(rotate_y, 0.0, 1.0, 0.0);
+    glRotatef(rotate_x, 1.0, 0.0, 0.0);
+    glScalef(zoom, zoom, zoom);
+
+    // Printing at front face
+    Display_Stroke(-0.48, 0.86, 1.51, 0.0008, 2, 0, "-SWEET HOME-");
+    Display_Stroke(-0.62, 0.65, 1.51, 0.0010, 4, 0, "KULDEEP");
+    Display_Stroke(0.18, 0.65, 1.51, 0.0010, 4, 0, "SINGH");
+    Display_Stroke(-0.47, 0.45, 1.51, 0.0010, 4, 0, "190001030");
+
+    // Printing at BACK face
+    Display_Stroke(0.48, 0.86, -1.51, 0.0008, 2, 180, "-Back View-");
+    Display_Stroke(0.62, 0.65, -1.51, 0.0010, 4, 180, "KULDEEP");
+    Display_Stroke(-0.18, 0.65, -1.51, 0.0010, 4, 180, "SINGH");
+    Display_Stroke(0.47, 0.45, -1.51, 0.0010, 4, 180, "190001030");
+
+    // Eabling Texture Environment
+    glTexEnvf(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_DECAL);
+
+    //******** FRONT ********
+    glBegin(GL_QUADS);
+    glColor3f(1.0, 1.0, 1.0);
+    glVertex3f(-1.5, 0.20, 1.5);
+    glVertex3f(-1.5, 1.0, 1.5);
+    glVertex3f(1.5, 1.0, 1.5);
+    glVertex3f(1.5, 0.20, 1.5);
+    glEnd();
+
+    glBegin(GL_QUADS);
+    glColor3f(1.0, 1.0, 1.0);
+    glVertex3f(-1.5, -1.0, 1.5);
+    glVertex3f(-1.5, 0.20, 1.5);
+    glVertex3f(-0.30, 0.20, 1.5);
+    glVertex3f(-0.30, -1.0, 1.5);
+    glEnd();
+
+    glBegin(GL_QUADS);
+    glColor3f(1.0, 1.0, 1.0);
+    glVertex3f(1.5, -1.0, 1.5);
+    glVertex3f(1.5, 0.20, 1.5);
+    glVertex3f(0.30, 0.20, 1.5);
+    glVertex3f(0.30, -1.0, 1.5);
+    glEnd();
+
+    //******** GATE ********
+    glPushMatrix();
+    glTranslatef(0.3, 0, 1.5);
+    glRotatef(doorAngle, 0, 1, 0);
+    glTranslatef(-0.3, 0, -1.5);
+    glBegin(GL_QUADS);
+    glColor3f(0.65f, 0.41f, 0.16f);
+    glVertex3f(0.30, -1.0, 1.501);
+    glVertex3f(0.30, 0.20, 1.501);
+    glVertex3f(0.003, 0.20, 1.501);
+    glVertex3f(0.003, -1.0, 1.501);
+    glEnd();
+    glPopMatrix();
 
     glPushMatrix();
-    light(30, 30, 30);
-    ground(1000);
-    tree(5 * house_width, -3 * house_height_, house_width);
-    house();
-    road(300);
+    glTranslatef(-0.3, 0, 1.5);
+    glRotatef(-doorAngle, 0, 1, 0);
+    glTranslatef(0.3, 0, -1.5);
+    glBegin(GL_QUADS);
+    glVertex3f(-0.30, -1.0, 1.501);
+    glVertex3f(-0.30, 0.20, 1.501);
+    glVertex3f(-0.003, 0.20, 1.501);
+    glVertex3f(-0.003, -1.0, 1.501);
+    glEnd();
+    glPopMatrix();
+
+    //******** BACK ********
+    glColor3f(0.8f, 1.0f, 1.0f);
+    glBegin(GL_QUADS);
+    glVertex3f(-1.5, -1.0, -1.5);
+    glVertex3f(-1.5, 1.0, -1.5);
+    glVertex3f(1.5, 1.0, -1.5);
+    glVertex3f(1.5, -1.0, -1.5);
+    glEnd();
+
+    //******** RIGHT ********
+    glBegin(GL_QUADS);
+    glColor3f(0.8f, 1.0f, 0.9f);
+    // glTexCoord2f(0.0, 0.0);
+    glVertex3f(1.5, -1.0, -1.5);
+    // glTexCoord2f(1.0, 0.0);
+    glVertex3f(1.5, 1.0, -1.5);
+    // glTexCoord2f(1.0, 1.0);
+    glVertex3f(1.5, 1.0, 1.5);
+    // glTexCoord2f(0.0, 1.0);
+    glVertex3f(1.5, -1.0, 1.5);
+    glEnd();
+
+    //******** LEFT ********
+    glBegin(GL_QUADS);
+    glColor3f(0.8f, 1.0f, 0.7f);
+    glTexCoord2f(0.0, 0.0);
+    glVertex3f(-1.5, -1.0, -1.5);
+    glTexCoord2f(1.0, 0.0);
+    glVertex3f(-1.5, 1.0, -1.5);
+    glTexCoord2f(1.0, 1.0);
+    glVertex3f(-1.5, 1.0, 1.5);
+    glTexCoord2f(0.0, 1.0);
+    glVertex3f(-1.5, -1.0, 1.5);
+    glEnd();
+
+    //******** TOP ********
+    glBegin(GL_QUADS);
+    // glTexCoord2f(0.0, 0.0);
+    glVertex3f(-1.75, 1.0, 1.5);
+    // glTexCoord2f(1.0, 0.0);
+    glVertex3f(-1.75, 1.0, -1.5);
+    // glTexCoord2f(1.0, 1.0);
+    glVertex3f(1.75, 1.0, -1.5);
+    // glTexCoord2f(0.0, 1.0);
+    glVertex3f(1.75, 1.0, 1.5);
+    glEnd();
+
+    //******** BOTTOM ********
+    glBegin(GL_QUADS);
+    double x = 10;
+    glColor3f(0.1f, 1.0f, 0.2f);
+    // glTexCoord2f(0.0, 0.0);
+    glVertex3f(-x, -1.0, x);
+    // glTexCoord2f(1.0, 0.0);
+    glVertex3f(-x, -1.0, -x);
+    // glTexCoord2f(1.0, 1.0);
+    glVertex3f(x, -1.0, -x);
+    // glTexCoord2f(0.0, 1.0);
+    glVertex3f(x, -1.0, x);
+    glEnd();
+
+    //******** ROOF ********
+    // left tri
+    glColor3f(0.5f, 0.2f, 0.1f);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(-1.75f, 1.0f, 1.5f);
+    glVertex3f(-1.75f, 1.0f, -1.5f);
+    glVertex3f(0.0f, 2.5f, 0.0f);
+    glEnd();
+
+    // right tri
+    glColor3f(0.5f, 0.2f, 0.3f);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(1.75f, 1.0f, 1.5f);
+    glVertex3f(1.75f, 1.0f, -1.5f);
+    glVertex3f(0.0f, 2.5f, 0.0f);
+    glEnd();
+
+    // back tri
+    glColor3f(0.65f, 0.41f, 0.16f);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(-1.75f, 1.0f, -1.5f);
+    glVertex3f(1.75f, 1.0f, -1.5f);
+    glVertex3f(0.0f, 2.5f, 0.0f);
+    glEnd();
+
+    // front tri
+    glColor3f(0.5f, 0.2f, 0.2f);
+    glBegin(GL_TRIANGLES);
+    glVertex3f(-1.75f, 1.0f, 1.5f);
+    glVertex3f(1.75f, 1.0f, 1.5f);
+    glVertex3f(0.0f, 2.5f, 0.0f);
+    glEnd();
+
+    //******** TREE ********
+    for (int i = -3; i < 2; i++)
+    {
+        glPushMatrix();
+        Tree(-3.5, 3, i);
+        glPopMatrix();
+    }
+
+    for (int i = -3; i < 2; i++)
+    {
+        glPushMatrix();
+        Tree(-5, 3, i);
+        glPopMatrix();
+    }
+
+    //******** ROAD ********
+    glPushMatrix();
+    glTranslatef(0, 0.1, 5);
+    glColor3f(0, 0, 0);
+    glBegin(GL_QUADS);
+    x = 10;
+    double y = 2;
+    glVertex3f(-x, -1, y);
+    glVertex3f(-x, -1, -y);
+    glVertex3f(x, -1, -y);
+    glVertex3f(x, -1, y);
+    glEnd();
+
+    glColor3f(1, 1, 1);
+    glBegin(GL_QUADS);
+    x = 10;
+    y = 0.1;
+    glVertex3f(-x, -0.9, y);
+    glVertex3f(-x, -0.9, -y);
+    glVertex3f(x, -0.9, -y);
+    glVertex3f(x, -0.9, y);
+    glEnd();
+    glPopMatrix();
+
+    //******** SUN ********
+    glPushMatrix();
+    glColor3f(0.8, 0.7, 0);
+    float sca = 2;
+    glTranslatef(lightposition[0] * sca, lightposition[1] * sca, lightposition[2] * sca);
+    // glTranslatef();
+    glutSolidSphere(0.3, 12, 12);
+    glPopMatrix();
+
+    //******** POOL ********
+    glPushMatrix();
+    glTranslatef(4.5, 0.1, 0);
+    glColor3f(0, 0.5, 0.8);
+    glBegin(GL_QUADS);
+    x = 1.5;
+    glVertex3f(-x, -1, x);
+    glVertex3f(-x, -1, -x);
+    glVertex3f(x, -1, -x);
+    glVertex3f(x, -1, x);
+    glEnd();
+    glPopMatrix();
+
+    glPushMatrix();
+    glColor3f(1, 1, 0);
+    glTranslatef(4.5, -0.9, 1.5);
+    glScalef(2 * x, 0.2, 0.1);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    glPushMatrix();
+    glColor3f(1, 1, 0);
+    glTranslatef(4.5, -0.9, -1.5);
+    glScalef(2 * x, 0.2, 0.1);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    glPushMatrix();
+    glColor3f(1, 1, 0);
+    glTranslatef(3, -0.9, 0);
+    glScalef(0.1, 0.2, 2 * x);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    glPushMatrix();
+    glColor3f(1, 1, 0);
+    glTranslatef(6, -0.9, 0);
+    glScalef(0.1, 0.2, 2 * x);
+    glutSolidCube(1);
+    glPopMatrix();
+
+    // TV
+    tv(t[0], t[1], t[2], t[3]);
+    tvs(ts[0], ts[1], ts[2], ts[3], ts[4], ts[5], ts[6], ts[7]);
+
+    // Sofa
+    sofa1();
+
+    // Table
+    table();
+
+    // Windows
+    windows();
+
+    // Grass
+    grass();
+
+    // glPushMatrix();
+    // FAN
+    fan(f[0], f[1], f[2], f[3], f[4], f[5]);
+    fblade(fb[0], fb[1], fb[2], fb[3], fb[4], fb[5], fb[6], fb[7], fb[8], fb[9], fb[10], fb[11], fb[12], fb[13], fb[14], fb[15]);
+    // glPopMatrix();
 
     glPopMatrix();
 
+    glFlush();
     glutSwapBuffers();
 }
 
-// Activate rotation if the left mouse button is pressed.
-void track_mouse_press(int button, int state, int x, int y)
+// Direction of rotation
+int axis_x = 0, axis_y = 0;
+
+// Takes action on pressing keyboard key
+void SpecialKeys(unsigned char key, int x, int y)
 {
-    if (button == GLUT_LEFT_BUTTON)
+    if (key == 'I')
     {
-        if (state == GLUT_UP)
-        {
-            mouse_pressed = false;
-            start_x = -1;
-            start_y = -1;
-        }
-        else
-        {
-            mouse_pressed = true;
-        }
+        intensity += 0.1;
     }
+    if (key == 'i')
+    {
+        intensity -= 0.1;
+    }
+    // Reset
+    if (key == 'r' or key == 'R')
+    {
+        rotate_x = 0;
+        rotate_y = 0;
+    }
+
+    // Zoom in/out
+    if (key == 'a' or key == 'A')
+    {
+        zoom *= 1.021897148;
+    }
+    if (key == 's' or key == 'S')
+    {
+        zoom /= 1.021897148;
+    }
+
+    // To open and close main gate
+    if (key == 'g')
+    {
+        doorAngle += 10;
+        if (doorAngle >= 120)
+            doorAngle = 120;
+    }
+
+    if (key == 'G')
+    {
+        doorAngle -= 10;
+        if (doorAngle <= 0)
+            doorAngle = 0;
+    }
+
+    // To open and close windows
+    if (key == 'w' or key == 'W')
+    {
+        if (mwo == 0)
+            mwo = 1;
+        else
+            mwo = 0;
+    }
+
+    // To rotate fan
+    if (key == 'f' or key == 'F')
+    {
+        if (fanflag == 0)
+            fanflag = 1;
+        else
+            fanflag = 0;
+    }
+
+    // To rotate fan
+    if (key == 'n' or key == 'N')
+    {
+        fanspeed += 4.0f;
+    }
+    if (key == 'm' or key == 'M')
+    {
+        fanspeed -= 4.0f;
+    }
+
+    // To ON/OFF light
+    if (key == 'l' or key == 'L')
+    {
+        if (lightflag == 0)
+            lightflag = 1;
+        else
+            lightflag = 0;
+    }
+
+    // To CHANGE light position
+    if (key == 'x')
+    {
+        lightposition[0] += 0.1;
+        lightposition2[0] += 0.1;
+    }
+    if (key == 'X')
+    {
+        lightposition[0] -= 0.1;
+        lightposition2[0] -= 0.1;
+    }
+
+    glutPostRedisplay();
+}
+
+// when a special keyboard key is pressed, it executes action.
+// Rotate the house (Also change the direction of rotation)       --- Using Keyboard
+void keyboardRotate(int key, int x, int y)
+{
+    if (key == GLUT_KEY_LEFT)
+    {
+        rotate_y += 5;
+        axis_y = 0;
+    }
+    if (key == GLUT_KEY_RIGHT)
+    {
+        rotate_y -= 5;
+        axis_y = 1;
+    }
+    if (key == GLUT_KEY_DOWN)
+    {
+        rotate_x -= 5;
+        axis_x = 1;
+    }
+    if (key == GLUT_KEY_UP)
+    {
+        rotate_x += 5;
+        axis_x = 0;
+    }
+    glutPostRedisplay();
+}
+
+int last_x = 0, last_y = 0;
+
+// Rotate the house (Also change the direction of rotation) --- Using Mouse
+void mouseRotate(int x, int y)
+{
+    if (x > 500 or y > 500 or x < 0 or y < 0)
+        return;
+    if (abs(x - last_x) > 25 or abs(y - last_y) > 25)
+    {
+        last_x = x;
+        last_y = y;
+        return;
+    }
+    rotate_x += (last_y - y + 0.0) * 0.5;
+    rotate_y += (last_x - x + 0.0) * 0.5;
+    if ((last_y - y) > 0)
+        axis_x = 0;
+    if ((last_y - y) < 0)
+        axis_x = 1;
+    if ((last_x - x) > 0)
+        axis_y = 0;
+    if ((last_x - x) < 0)
+        axis_y = 1;
+    last_x = x;
+    last_y = y;
+
+    glutPostRedisplay();
+}
+
+// To show Zoom-in/out functionality (Also changed using Scrollwheel)
+void mouseZoom(int btn, int state, int x, int y)
+{
     if (state == GLUT_DOWN)
     {
-        // for scroll
-        switch (button)
+        if (btn == 3)
         {
-        case 3:
-            Radius -= 0.5;
-            break;
-        case 4:
-            Radius += 0.5;
-            break;
-        default:
-            break;
+            zoom *= 1.021897148;
+        }
+        if (btn == 4)
+        {
+            zoom /= 1.021897148;
         }
     }
+    glutPostRedisplay();
 }
 
-// adjusting the angle based on the current mouse position
-void track_mouse(int x, int y)
+// To add Spin motion to the house
+void idleSpinFunc()
 {
-    if (start_x == -1)
-        start_x = x;
-    if (start_y == -1)
-        start_y = y;
-    if (mouse_pressed)
-    {
+    if (axis_x == 0)
+        rotate_x += 0.2;
+    if (axis_x == 1)
+        rotate_x -= 0.2;
+    if (axis_y == 0)
+        rotate_y += 0.2;
+    if (axis_y == 1)
+        rotate_y -= 0.2;
 
-        Theta += (y - start_y) * unit_change * 0.015;
-
-        Phi -= (x - start_x) * unit_change * 0.015;
-    
-        if (Phi > 2 * PI)
-            Phi -= 2 * PI;
-        if (Phi < 0)
-            Phi += 2 * PI;
-        if (Theta > 2 * PI)
-            Theta -= 2 * PI;
-        if (Theta < 0)
-            Theta += 2 * PI;
-    }
-    start_x = x;
-    start_y = y;
+    usleep(10000);
+    flag_time += 1;
+    // Draw();
+    glutPostRedisplay();
 }
 
-void processSpecialKeys(unsigned char key, int x, int y)
+// Loading texture using imageio
+void load_texture()
 {
-    switch (key)
+    unsigned int texture;
+    glGenTextures(1, &texture);
+    GLubyte *texImage = makeTexImage((char *)"colorful.png");
+    if (!texImage)
     {
-    case 'z':
-        intensity += 1;
-        break;
-    case 'y':
-        intensity -= 1;
-        break;
+        printf("\n[-] Error in reading image \n");
+        return;
     }
-    switch (key)
-    {
-    // case 'a':
-    //     left_right += 1;
-    //     break;
-    case 'w':
-        front_back += 1;
-        break;
-    case 's':
-        front_back -= 1;
-        break;
-        // case 'd':
-        //     left_right -= 1;
-        //     break;
-    }
-    switch (key)
-    {
-    case 'f':
-        flip = !flip;
-        break;
-    case 'c':
-        window1 = !window1;
-        break;
-    case 'v':
-        window2 = !window2;
-        break;
-    }
+    glBindTexture(GL_TEXTURE_2D, texture);
 
-	glutPostRedisplay();
+    // set the texture wrapping/filtering options (on the currently bound texture object)
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, texImageWidth, texImageWidth, 0, GL_RGBA, GL_UNSIGNED_BYTE, texImage);
+    delete texImage;
 }
 
-void processSpecialKeys(int key, int x, int y)
+void setupCamera(int w, int h)
 {
-    switch (key)
-    {
-    case GLUT_KEY_UP:
-        Theta -= unit_change * 0.3;
-        break;
-    case GLUT_KEY_DOWN:
-        Theta += unit_change * 0.3;
-        break;
-    }
-    switch (key)
-    {
-    case GLUT_KEY_RIGHT:
-        if (Theta >= (3 * PI / 2) || Theta <= (PI / 2))
-            Phi -= unit_change * 0.3;
-        else
-            Phi += unit_change * 0.3;
-        break;
-    case GLUT_KEY_LEFT:
-        if (Theta >= (3 * PI / 2) || Theta <= (PI / 2))
-            Phi += unit_change * 0.3;
-        else
-            Phi -= unit_change * 0.3;
-        break;
-    }
-    if (Phi > 2 * PI)
-        Phi -= 2 * PI;
-    if (Phi < 0)
-        Phi += 2 * PI;
-    if (Theta > 2 * PI)
-        Theta -= 2 * PI;
-    if (Theta < 0)
-        Theta += 2 * PI;
+    glViewport(0, 0, (GLsizei)w, (GLsizei)h);
+
+    glMatrixMode(GL_PROJECTION);
+
+    glLoadIdentity();
+    gluPerspective(45.0, (double)w / (double)h, 1.0, 200.0);
+
+    /* eye is at (0,0,5) */
+    /* center is at (0, 0, 0) */
+    /* Up vector is in positive Y direction */
+    gluLookAt(0.0, 0.0, 5.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0);
+
+    glMatrixMode(GL_MODELVIEW);
+    glLoadIdentity();
 }
 
-int main(int C, char *V[])
+// Initialize
+void myInit()
 {
-    glutInit(&C, V);
-    glutInitDisplayMode(GLUT_DEPTH | GLUT_DOUBLE | GLUT_RGBA);
-    glutInitWindowPosition(300, 300);
-    glutInitWindowSize(1000, 1000);
-    glutCreateWindow("3D - House | 190001030");
 
-    glutDisplayFunc(draw);
-    glutReshapeFunc(update_window_size);
-    glutIdleFunc(draw);
-
-    glClearColor(128 / 255.0, 128 / 255.0, 255 / 255.0, 0.0);
-
-    glutMouseFunc(track_mouse_press);
-    glutMotionFunc(track_mouse);
-    glutKeyboardFunc(processSpecialKeys);
-    glutSpecialFunc(processSpecialKeys);
-
+    glClearColor(0.0, 0.1, 0.12, 1.0);
     glEnable(GL_DEPTH_TEST);
-    glutMainLoop();
+    glEnable(GL_TEXTURE_2D);
+    glShadeModel(GL_SMOOTH);
+    glDepthFunc(GL_LEQUAL);
 
+    // Camera view
+    setupCamera(width, height);
+}
+
+// When any option in the menu is selected, this method is called.
+void choose_Menu(int value)
+{
+    if (value == 999)
+        exit(0);
+    glutPostRedisplay();
+}
+
+// Create Menu
+void create_menu()
+{
+    glutCreateMenu(choose_Menu);
+    glutAddMenuEntry("Quit", 999);
+    glutAttachMenu(GLUT_RIGHT_BUTTON);
+}
+
+int main(int argc, char **argv)
+{
+
+    glutInit(&argc, argv);
+    glutInitWindowPosition(700, 0); // set window position
+    glutInitWindowSize(700, 700);   // set window size
+    glutInitDisplayMode(GLUT_DOUBLE | GLUT_RGB | GLUT_DEPTH);
+    glutCreateWindow("3D - HOUSE | 190001030"); // set window title
+
+    // To display image
+    load_texture();
+
+    myInit();
+    create_menu();
+    glutDisplayFunc(display);
+    glutReshapeFunc(setupCamera);
+
+    // To set funtionalities like zoom-in/out, intensity and reset.
+    glutKeyboardFunc(SpecialKeys);
+    glutSpecialFunc(keyboardRotate);
+
+    // To drag the house using mouse
+    glutMouseFunc(mouseZoom);
+    glutMotionFunc(mouseRotate);
+
+    // To spin the house
+    // glutIdleFunc(idleSpinFunc);
+    glutIdleFunc(spin);
+
+    glutMainLoop();
     return 0;
 }
